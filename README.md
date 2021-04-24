@@ -10,3 +10,11 @@ Learn Blockchains by Building One
 
 - 日本語翻訳
   https://qiita.com/hidehiro98/items/841ece65d896aeaa8a2a
+
+```
+go run main.go server.go blockchain.go
+
+curl http://localhost:5000/mine
+curl -X POST http://localhost:5000/transactions/new -d '{"sender":"d4ee26eee15148ee92c6cd394edd974e","recipient":"someone-other-address","amount":5}'
+curl http://localhost:5000/chain
+```

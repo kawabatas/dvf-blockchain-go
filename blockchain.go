@@ -16,20 +16,20 @@ type Blockchain struct {
 }
 
 type Block struct {
-	Index        int
-	Timestamp    time.Time
-	Transactions []*Transaction
-	Proof        int
-	PreviousHash string
+	Index        int            `json:"index"`
+	Timestamp    time.Time      `json:"timestamp"`
+	Transactions []*Transaction `json:"transactions"`
+	Proof        int            `json:"proof"`
+	PreviousHash string         `json:"previous_hash"`
 }
 
 type Transaction struct {
-	Sender    string
-	Recipient string
-	Amount    int
+	Sender    string `json:"sender"`
+	Recipient string `json:"recipient"`
+	Amount    int    `json:"amount"`
 }
 
-func Init() (*Blockchain, error) {
+func InitBlockchain() (*Blockchain, error) {
 	bc := &Blockchain{}
 	// ジェネシスブロックを作る
 	if _, err := bc.NewBlock(100, "1"); err != nil {
