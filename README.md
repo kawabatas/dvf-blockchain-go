@@ -18,3 +18,13 @@ curl http://localhost:5000/mine
 curl -X POST http://localhost:5000/transactions/new -d '{"sender":"d4ee26eee15148ee92c6cd394edd974e","recipient":"someone-other-address","amount":5}'
 curl http://localhost:5000/chain
 ```
+
+```
+go run main.go server.go blockchain.go -addr=:5001
+
+curl -X POST -H "Content-Type: application/json" -d '{
+    "nodes": ["http://localhost:5001"]
+}' "http://localhost:5000/nodes/register"
+curl "http://localhost:5001/mine"
+curl "http://localhost:5000/nodes/resolve"
+```

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ type Blockchain struct {
 	// Goでは配列は順序づけされている
 	Chain               []*Block
 	CurrentTransactions []*Transaction
+	Nodes               map[string]bool // python における set
 }
 
 type Block struct {
@@ -30,7 +32,9 @@ type Transaction struct {
 }
 
 func InitBlockchain() (*Blockchain, error) {
-	bc := &Blockchain{}
+	bc := &Blockchain{
+		Nodes: make(map[string]bool),
+	}
 	// ジェネシスブロックを作る
 	if _, err := bc.NewBlock(100, "1"); err != nil {
 		return nil, err
@@ -128,4 +132,89 @@ func ValidProof(lastProof, proof int) bool {
 	guessHash := sha256.Sum256([]byte(guess))
 	guessHashString := hex.EncodeToString(guessHash[:])
 	return strings.HasPrefix(guessHashString, "0000")
+}
+
+// ノードリストに新しいノードを加える
+// @param address: ノードのアドレス 例: 'http://192.168.0.5:5000'
+func (bc *Blockchain) RegisterNode(address string) {
+	bc.Nodes[address] = true
+}
+
+// ブロックチェーンが正しいかを確認する
+// @param chain: ブロックチェーン
+// @return: True であれば正しく、 False であればそうではない
+// @return: エラー
+func (bc *Blockchain) ValidChain(chain []*Block) (bool, error) {
+	lastBlock := chain[0]
+	currentIndex := 1
+
+	for currentIndex < len(chain) {
+		block := chain[currentIndex]
+		fmt.Printf("%v\n", lastBlock)
+		fmt.Printf("%v\n", block)
+		fmt.Print("\n--------------\n")
+
+		// ブロックのハッシュが正しいかを確認
+		prevHash, err := Hash(lastBlock)
+		if err != nil {
+			return false, err
+		}
+		if block.PreviousHash != prevHash {
+			return false, nil
+		}
+
+		// プルーフ・オブ・ワークが正しいかを確認
+		if !ValidProof(lastBlock.Proof, block.Proof) {
+			return false, nil
+		}
+
+		lastBlock = block
+		currentIndex += 1
+	}
+
+	return true, nil
+}
+
+// これがコンセンサスアルゴリズムだ。ネットワーク上の最も長いチェーンで自らのチェーンを置き換えることでコンフリクトを解消する。
+// @return: 自らのチェーンが置き換えられると True 、そうでなれけば False
+// @return: エラー
+func (bc *Blockchain) ResolveConflicts() (bool, error) {
+	neighbours := bc.Nodes
+	var newChain []*Block
+
+	// 自らのチェーンより長いチェーンを探す必要がある
+	maxLength := len(bc.Chain)
+
+	// 他のすべてのノードのチェーンを確認
+	for node, _ := range neighbours {
+		resp, err := http.Get(node + "/chain")
+		if err != nil {
+			return false, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			var body FullChainResponse
+			if err = json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				return false, err
+			}
+			// そのチェーンがより長いか、有効かを確認
+			isValid, err := bc.ValidChain(body.Chain)
+			if err != nil {
+				return false, err
+			}
+			if body.Length > maxLength && isValid {
+				maxLength = body.Length
+				newChain = body.Chain
+			}
+		}
+	}
+
+	// もし自らのチェーンより長く、かつ有効なチェーンを見つけた場合それで置き換える
+	if newChain != nil {
+		bc.Chain = newChain
+		return true, nil
+	}
+
+	return false, nil
 }

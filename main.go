@@ -18,7 +18,7 @@ const (
 )
 
 func main() {
-	// port5000でサーバーを起動する
+	// デフォルトport5000でサーバーを起動する
 	flagAddr := flag.String("addr", ":5000", "host:port")
 	flag.Parse()
 	os.Exit(run(*flagAddr))

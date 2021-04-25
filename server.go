@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 type Server struct {
@@ -48,6 +49,10 @@ func (s *Server) initHandlers() {
 	mux.HandleFunc("/mine", s.HandleMine)
 	// メソッドはGETで、フルのブロックチェーンをリターンする/chainエンドポイントを作る
 	mux.HandleFunc("/chain", s.HandleFullChain)
+	// URLの形での新しいノードのリストを受け取る
+	mux.HandleFunc("/nodes/register", s.HandleRegisterNode)
+	// あらゆるコンフリクトを解消することで、ノードが正しいチェーンを持っていることを確認する
+	mux.HandleFunc("/nodes/resolve", s.HandleConsensus)
 }
 
 type NewTransactionsResponse struct {
@@ -128,6 +133,79 @@ func (s *Server) HandleFullChain(w http.ResponseWriter, r *http.Request) {
 		Chain:  s.blockchain.Chain,
 		Length: len(s.blockchain.Chain),
 	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type RegisterNodeRequest struct {
+	Nodes []string `json:"nodes"`
+}
+
+type RegisterNodeResponse struct {
+	Message    string   `json:"message"`
+	TotalNodes []string `json:"total_nodes"`
+}
+
+func (s *Server) HandleRegisterNode(w http.ResponseWriter, r *http.Request) {
+	var body RegisterNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for _, node := range body.Nodes {
+		if _, err := url.Parse(node); err != nil {
+			http.Error(w, "有効ではないノードのリストです", http.StatusBadRequest)
+			return
+		}
+
+	}
+
+	for _, node := range body.Nodes {
+		s.blockchain.RegisterNode(node)
+	}
+
+	var totalNodes []string
+	for nodeAddr, _ := range s.blockchain.Nodes {
+		totalNodes = append(totalNodes, nodeAddr)
+	}
+
+	if err := json.NewEncoder(w).Encode(&RegisterNodeResponse{
+		Message:    "新しいノードが追加されました",
+		TotalNodes: totalNodes,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type ConsensusResponse struct {
+	Message string   `json:"message"`
+	Chain   []*Block `json:"chain"`
+}
+
+func (s *Server) HandleConsensus(w http.ResponseWriter, r *http.Request) {
+	replaced, err := s.blockchain.ResolveConflicts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+
+	}
+
+	var resp *ConsensusResponse
+	if replaced {
+		resp = &ConsensusResponse{
+			Message: "チェーンが置き換えられました",
+			Chain:   s.blockchain.Chain,
+		}
+	} else {
+		resp = &ConsensusResponse{
+			Message: "チェーンが確認されました",
+			Chain:   s.blockchain.Chain,
+		}
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
